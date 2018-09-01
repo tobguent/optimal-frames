@@ -1,4 +1,4 @@
-#include "vtkObjectivityFilter.h"
+#include "vtkHyperObjectivityFilter.h"
 #include <vtkImageData.h>
 #include <vtkObjectFactory.h>
 #include <vtkStreamingDemandDrivenPipeline.h>
@@ -15,7 +15,7 @@
 #include <vector>
 #include <vtkFloatArray.h>
  
-vtkStandardNewMacro(vtkObjectivityFilter);
+vtkStandardNewMacro(vtkHyperObjectivityFilter);
 
 // Creates a 2x2 matrix from 2 column vectors
 static Eigen::Matrix2d make_Matrix2d(const Eigen::Vector2d& c0, const Eigen::Vector2d& c1)
@@ -34,7 +34,7 @@ static Eigen::Matrix2d make_Matrix2d(const double& m00, const double& m01, const
 }
 
 
-vtkObjectivityFilter::vtkObjectivityFilter() : NeighborhoodU(10), UseSummedAreaTables(true),
+vtkHyperObjectivityFilter::vtkHyperObjectivityFilter() : NeighborhoodU(10), Invariance(AffineInvariance), UseSummedAreaTables(true),
 FieldNameV(NULL), FieldNameVx(NULL), FieldNameVy(NULL), FieldNameVt(NULL)
 {
 	SetFieldNameV("v");
@@ -43,7 +43,7 @@ FieldNameV(NULL), FieldNameVx(NULL), FieldNameVy(NULL), FieldNameVt(NULL)
 	SetFieldNameVt("vt");
 }
 
-int vtkObjectivityFilter::RequestData(vtkInformation *vtkNotUsed(request),
+int vtkHyperObjectivityFilter::RequestData(vtkInformation *vtkNotUsed(request),
 	vtkInformationVector **inputVector,
 	vtkInformationVector *outputVector)
 {
@@ -62,8 +62,14 @@ int vtkObjectivityFilter::RequestData(vtkInformation *vtkNotUsed(request),
 	double* spacing = input->GetSpacing();
 	double* boundsMin = input->GetOrigin();
 
-	// set the system matrix size
-	const int systemSize = 6;
+	// select the system matrix size depending on the chosen invariance
+	int systemSize = 6;
+	switch (Invariance) {
+	default:
+	case Objectivity:			systemSize = 6;		break;
+	case SimilarityInvariance:	systemSize = 8;		break;
+	case AffineInvariance:		systemSize = 12;	break;
+	}
 
 	// read the input data and abort if data is not present!
 	float* input_v = NULL, *input_vx = NULL, *input_vy = NULL, *input_vt = NULL;
@@ -112,7 +118,7 @@ int vtkObjectivityFilter::RequestData(vtkInformation *vtkNotUsed(request),
 				double x = boundsMin[0] + ix * spacing[0];
 				int tupleIdx = it * dims[0] * dims[1] + iy*dims[0] + ix;
 
-				// position and velocity and derivatives at the voxel
+				// position, velocity and derivatives at the voxel
 				Vector2d xx(x, y);
 				Vector2d vv(input_v[tupleIdx * 2 + 0], input_v[tupleIdx * 2 + 1]);
 				Vector2d dx(input_vx[tupleIdx * 2 + 0], input_vx[tupleIdx * 2 + 1]);
@@ -128,9 +134,23 @@ int vtkObjectivityFilter::RequestData(vtkInformation *vtkNotUsed(request),
 
 				// setup matrix M
 				MatrixXd M(2, systemSize);
-				M(0, 0) = Jxpvp.x(); 	 M(0, 1) = dx.x(); M(0, 2) = dy.x();   M(0, 3) = 1; M(0, 4) = 0;   M(0, 5) = Xp.x();
-				M(1, 0) = Jxpvp.y(); 	 M(1, 1) = dx.y(); M(1, 2) = dy.y();   M(1, 3) = 0; M(1, 4) = 1;   M(1, 5) = Xp.y();
-				
+				switch (Invariance)
+				{
+				default:
+				case Objectivity:
+					M(0, 0) = Jxpvp.x(); 	 M(0, 1) = dx.x(); M(0, 2) = dy.x();   M(0, 3) = 1; M(0, 4) = 0;   M(0, 5) = Xp.x();
+					M(1, 0) = Jxpvp.y(); 	 M(1, 1) = dx.y(); M(1, 2) = dy.y();   M(1, 3) = 0; M(1, 4) = 1;   M(1, 5) = Xp.y();
+					break;
+				case SimilarityInvariance:
+					M(0, 0) = Jxpvp.x(); 	 M(0, 1) = dx.x(); M(0, 2) = dy.x();   M(0, 3) = 1; M(0, 4) = 0;   M(0, 5) = Xp.x(); M(0, 6) = Jxv.x(); M(0, 7) = xx.x();
+					M(1, 0) = Jxpvp.y(); 	 M(1, 1) = dx.y(); M(1, 2) = dy.y();   M(1, 3) = 0; M(1, 4) = 1;   M(1, 5) = Xp.y(); M(1, 6) = Jxv.y();	M(1, 7) = xx.y();
+					break;
+				case AffineInvariance:
+					M(0, 0) = vv.x() - xx.x() * J(0, 0);	M(0, 1) = 0 - xx.x() * J(0, 1);	/**/  M(0, 2) = vv.y() - xx.y() * J(0, 0);  M(0, 3) = 0 - xx.y() * J(0, 1);  /**/  M(0, 4) = J(0, 0);  M(0, 5) = J(0, 1);  /**/  M(0, 6) = 1;  M(0, 7) = 0;  /**/  M(0, 8) = xx.x();  M(0, 9) = 0;       /**/  M(0, 10) = xx.y();  M(0, 11) = 0;
+					M(1, 0) = 0 - xx.x() * J(1, 0);	M(1, 1) = vv.x() - xx.x() * J(1, 1);	/**/  M(1, 2) = 0 - xx.y() * J(1, 0);  M(1, 3) = vv.y() - xx.y() * J(1, 1);  /**/  M(1, 4) = J(1, 0);  M(1, 5) = J(1, 1);  /**/  M(1, 6) = 0;	M(1, 7) = 1; /**/  M(1, 8) = 0;       M(1, 9) = xx.x();  /**/  M(1, 10) = 0;       M(1, 11) = xx.y();
+					break;
+				}
+
 				// store MTM and MTb
 				MatrixXd MT = M.transpose();
 				_M[iy*dims[0] + ix] = M;
@@ -188,19 +208,12 @@ int vtkObjectivityFilter::RequestData(vtkInformation *vtkNotUsed(request),
 				}
 				else
 				{
-					int count = 0;
 					for (int wy = y1; wy <= y2; ++wy)
 						for (int wx = x1; wx <= x2; ++wx)
 						{
 							MTM += _MTM[wy*dims[0] + wx];
 							MTb += _MTb[wy*dims[0] + wx];
-							count++;
 						}
-					if (count > 0)
-					{
-						MTM /= count;
-						MTb /= count;
-					}
 				}
 				
 				// solve for reference frame parameters
@@ -213,9 +226,26 @@ int vtkObjectivityFilter::RequestData(vtkInformation *vtkNotUsed(request),
 				Vector2d dy(input_vy[tupleIdx * 2 + 0], input_vy[tupleIdx * 2 + 1]);
 				Vector2d dt(input_vt[tupleIdx * 2 + 0], input_vt[tupleIdx * 2 + 1]);
 				Matrix2d J = make_Matrix2d(dx, dy);
+				Vector2d vnew(0, 0);
+				Matrix2d Jnew = make_Matrix2d(0, 0, 0, 0);
 				Vector2d Xp(-xx.y(), xx.x());
-				Vector2d vnew = vv + Vector2d(uu(1), uu(2)) - uu(0) * Xp;
-				Matrix2d Jnew = J + make_Matrix2d(0, uu(0), -uu(0), 0);
+				switch (Invariance)
+				{
+				case Objectivity:
+					vnew = vv + Vector2d(uu(1), uu(2)) - uu(0) * Xp;
+					Jnew = J + make_Matrix2d(0, uu(0), -uu(0), 0);
+					break;
+				case SimilarityInvariance:
+					vnew = vv + Vector2d(uu(1), uu(2)) - uu(0) * Xp - uu(6) * xx;
+					Jnew = J + make_Matrix2d(0, uu(0), -uu(0), 0) - make_Matrix2d(uu(6), 0, 0, uu(6));
+					break;
+				case AffineInvariance:
+					Matrix2d H1 = make_Matrix2d(-uu(0), -uu(2), -uu(1), -uu(3));
+					Vector2d k1(uu(4), uu(5));
+					vnew = vv + H1 * xx + k1;
+					Jnew = J + H1;
+					break;
+				}
 				Vector2d vtnew = dt - _M[iy * dims[0] + ix] * uu;
 
 				// store the result

@@ -7,14 +7,15 @@
 #include <vtkXMLImageDataWriter.h>
 #include <vtkImageReader.h>
 #include <vtkFloatArray.h>
-#include "vtkObjectivityFilter.h"
+#include "vtkHyperObjectivityFilter.h"
 
 // Reads a vector field from file or uses a Stuart vortex by default.
-vtkSmartPointer<vtkImageData> InitializeTestCase(int argc, char *argv[], int* neighborhoodU);
+vtkSmartPointer<vtkImageData> InitializeTestCase(int argc, char *argv[], int* neighborhoodU, vtkHyperObjectivityFilter::EInvariance* invariance);
 
 // Input arguments:
 //   [1] : path to the vti-file in XML format, containing the unsteady vector field and all its first-order derivatives as floats in 2D space-time (the third dimension is time, the vectors stored the xy-components only)
 //   [2] : neighborhood size (int)
+//   [3] : invariance choice (0=objectivity, 1=similarity invariance, 2=affine invariance)
 int main(int argc, char *argv[])
 {
 	// ---------------------------------------------
@@ -23,16 +24,18 @@ int main(int argc, char *argv[])
 	cout << "Initialize test case..." << endl;
 
 	int neighborhoodU;
-	vtkSmartPointer<vtkImageData> input = InitializeTestCase(argc, argv, &neighborhoodU);
+	vtkHyperObjectivityFilter::EInvariance invariance;
+	vtkSmartPointer<vtkImageData> input = InitializeTestCase(argc, argv, &neighborhoodU, &invariance);
 
 	// ---------------------------------------------
 	// --- Compute vector field in optimal frame ---
 	// ---------------------------------------------
 	cout << "Computing optimal reference frame..." << endl;
 
-	vtkSmartPointer<vtkObjectivityFilter> filter = vtkSmartPointer<vtkObjectivityFilter>::New();
+	vtkSmartPointer<vtkHyperObjectivityFilter> filter = vtkSmartPointer<vtkHyperObjectivityFilter>::New();
 	filter->SetInputData(input);
 	filter->SetNeighborhoodU(neighborhoodU);	// size of neighborhood region U in voxels
+	filter->SetInvariance(invariance);			// select the desired invariance
 	filter->SetFieldNameV("v");					// name of the point data field that contains velocities
 	filter->SetFieldNameVx("vx");				// name of the point data field that contains x-partials of the velocity
 	filter->SetFieldNameVy("vy");				// name of the point data field that contains y-partials of the velocity
@@ -115,14 +118,15 @@ vtkSmartPointer<vtkImageData> CreateStuartVectorField()
 }
 
 // Reads a vector field from file or uses a Stuart vortex by default.
-vtkSmartPointer<vtkImageData> InitializeTestCase(int argc, char *argv[], int* neighborhoodU)
+vtkSmartPointer<vtkImageData> InitializeTestCase(int argc, char *argv[], int* neighborhoodU, vtkHyperObjectivityFilter::EInvariance* invariance)
 {
 	// set the default parameters
 	*neighborhoodU = 10;										// size of neighborhood region in voxels: [2*N+1]^2
+	*invariance = vtkHyperObjectivityFilter::AffineInvariance;	// selected invariance
 
 	// read command line arguments to create the input vector field
 	vtkSmartPointer<vtkImageData> input;
-	if (argc == 3) 
+	if (argc == 4) 
 	{
 		// create a reader and try to read the file
 		vtkSmartPointer<vtkXMLImageDataReader> reader = vtkSmartPointer<vtkXMLImageDataReader>::New();
@@ -133,8 +137,13 @@ vtkSmartPointer<vtkImageData> InitializeTestCase(int argc, char *argv[], int* ne
 		// if the reader read a plausible dimension, we assume that the reader was successful.
 		if (input->GetDimensions()[0] != 0) {
 			cout << "  Data set \t = " << argv[1] << endl;
-			// read additional parameter: neighborhood size
+			// read additional parameters: neighborhood size and invariance
 			*neighborhoodU = atoi(argv[2]);
+			switch (atoi(argv[3])) {
+			case 0: *invariance = vtkHyperObjectivityFilter::Objectivity; break;
+			case 1: *invariance = vtkHyperObjectivityFilter::SimilarityInvariance; break;
+			case 2: *invariance = vtkHyperObjectivityFilter::AffineInvariance; break;
+			}
 		}
 		else // if unsuccessful, for instance when file was not found, build a stuart vortex instead.
 		{
@@ -151,5 +160,6 @@ vtkSmartPointer<vtkImageData> InitializeTestCase(int argc, char *argv[], int* ne
 		cout << "  Data set \t = Stuart Vortex" << endl;
 	}
 	cout << "  Neighborhood U = " << *neighborhoodU << endl;
+	cout << "  Invariance \t = " << (*invariance == 0 ? "Objectivity" : (*invariance == 1 ? "Similarity Invariance" : "Affine Invariance")) << endl;
 	return input;
 }

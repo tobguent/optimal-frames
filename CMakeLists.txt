@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 2.8)
- 
-PROJECT(ObjectivityFilter)
+
+PROJECT(HyperObjectivityFilter)
 
 FIND_PACKAGE(VTK REQUIRED)
 include(${VTK_USE_FILE})
@@ -8,7 +8,7 @@ include(${VTK_USE_FILE})
 FIND_PACKAGE(Eigen3 REQUIRED)
 include_directories(${EIGEN3_INCLUDE_DIR})
 
-add_executable(ObjectivityFilter ObjectivityFilter.cxx vtkObjectivityFilter.cxx vtkObjectivityFilter.h)
+add_executable(HyperObjectivityFilter MACOSX_BUNDLE HyperObjectivityFilter vtkHyperObjectivityFilter.cxx vtkHyperObjectivityFilter.h)
  
 FIND_PACKAGE(OpenMP)
 IF(OPENMP_FOUND)
@@ -21,7 +21,7 @@ ELSE()
 ENDIF()
 
 if(VTK_LIBRARIES)
-  target_link_libraries(ObjectivityFilter ${VTK_LIBRARIES})
+  target_link_libraries(HyperObjectivityFilter ${VTK_LIBRARIES})
 else()
-  target_link_libraries(ObjectivityFilter vtkHybrid vtkWidgets)
+  target_link_libraries(HyperObjectivityFilter vtkHybrid vtkWidgets)
 endif()

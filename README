@@ -1,27 +1,34 @@
 
-#######################################################
-## Generic Objective Vortices for Flow Visualization ##
-#######################################################
+#############################################################
+## Generic Objective Vortices and Hyper-Objective Vortices ##
+#############################################################
 
-This folder contains a VTK implementation for the 2D case of the paper:
+This folder contains a VTK implementation for the 2D case of the papers:
   
   Tobias Günther, Markus Gross, Holger Theisel
   Generic Objective Vortices for Flow Visualization
   ACM Transactions on Graphics (Proc. SIGGRAPH), 2017.
+  
+and 
+
+  Tobias Günther, Holger Theisel
+  Hyper-Objective Vortices
+  IEEE Transactions on Visualization and Computer Graphics, 2018.
 
 ============================================
-VTK class vtkObjectivityFilter
+VTK class vtkHyperObjectivityFilter
 ============================================
-The class vtkObjectivityFilter implements a vtkImageAlgorithm that transforms a given unsteady 2D vector field into an optimal reference frame. The user can set the neighborhood region for the local fitting of the reference frame transformation.
+The class vtkHyperObjectivityFilter implements a vtkImageAlgorithm that transforms a given unsteady 2D vector field into an optimal reference frame. The user may set the neighborhood region for the local fitting of the reference transformation, and may choose among three supported classes of reference frame invariance, namely objectivity, similarity invariance and affine invariance.
 
 ============================================
-Example program ObjectivityFilter.cxx
+Example program HyperObjectivityFilter.cxx
 ============================================
-The file ObjectivityFilter.cxx contains a command line program that demonstrates the vtkObjectivityFilter. The command line tool transforms a vector field that is given in the VTKImageData XML format (*.vti), and writes the result into a vti-file. Note that the vector field must be given in 2D space-time, i.e., the third dimension is time. 
+The file HyperObjectivityFilter.cxx contains a command line program that demonstrates the vtkHyperObjectivityFilter. The command line tool transforms a vector field that is given in the VTKImageData XML format (*.vti), and writes the result into a vti-file. Note that the vector field must be given in 2D space-time, i.e., the third dimension is time. 
 The command line arguments are:
   1. the path to the vector field in *.vti XML format
   2. the neighborhood size
-Example: "mypath.vti" 10
+  3. the selected type of reference frame invariance (0=objectivity, 1=similarity invariance, 2=affine invariance)
+Example: "mypath.vti" 10 0
 If no vector field is passed as argument, the command line tool uses a simple Stuart vortex vector field.
 
 ============================================
