@@ -3,19 +3,20 @@
  
 #include "vtkImageAlgorithm.h"
  
-class vtkHyperObjectivityFilter : public vtkImageAlgorithm
+class vtkReferenceFrameFilter : public vtkImageAlgorithm
 {
 public:
 	enum EInvariance
 	{
 		Objectivity,
 		SimilarityInvariance,
-		AffineInvariance
+		AffineInvariance,
+		Displacement
 	};
-	static vtkHyperObjectivityFilter *New();
-	vtkTypeMacro(vtkHyperObjectivityFilter, vtkImageAlgorithm);
+	static vtkReferenceFrameFilter *New();
+	vtkTypeMacro(vtkReferenceFrameFilter, vtkImageAlgorithm);
 
-	vtkHyperObjectivityFilter();
+	vtkReferenceFrameFilter();
 
 	vtkGetMacro(NeighborhoodU, int);
 	vtkSetMacro(NeighborhoodU, int);
@@ -25,6 +26,9 @@ public:
 
 	vtkGetMacro(UseSummedAreaTables, bool);
 	vtkSetMacro(UseSummedAreaTables, bool);
+
+	vtkGetMacro(TaylorOrder, int);
+	vtkSetMacro(TaylorOrder, int);
 
 	vtkGetStringMacro(FieldNameV);
 	vtkSetStringMacro(FieldNameV);
@@ -44,14 +48,15 @@ protected:
 	int NeighborhoodU;
 	EInvariance Invariance;
 	bool UseSummedAreaTables;
+	int TaylorOrder;
 	char* FieldNameV;
 	char* FieldNameVx;
 	char* FieldNameVy;
 	char* FieldNameVt;
 
 private:
-	vtkHyperObjectivityFilter(const vtkHyperObjectivityFilter&);  // Not implemented.
-	void operator=(const vtkHyperObjectivityFilter&);  // Not implemented.
+	vtkReferenceFrameFilter(const vtkReferenceFrameFilter&);  // Not implemented.
+	void operator=(const vtkReferenceFrameFilter&);  // Not implemented.
 
 };
  

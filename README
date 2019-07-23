@@ -1,44 +1,47 @@
 
-#############################################################
-## Generic Objective Vortices and Hyper-Objective Vortices ##
-#############################################################
+#######################################################
+## Unsteady Vector Fields in Steady Reference Frames ##
+#######################################################
 
 This folder contains a VTK implementation for the 2D case of the papers:
+  
+  Irene Baeza Rojo, Tobias Günther
+  Vector Field Topology of Time-Dependent Flows in a Steady Reference Frame
+  submitted to: IEEE Scientific Visualization 2019.
+
+  Tobias Günther, Holger Theisel
+  Hyper-Objective Vortices
+  IEEE Transactions on Visualization and Computer Graphics, 2019.
   
   Tobias Günther, Markus Gross, Holger Theisel
   Generic Objective Vortices for Flow Visualization
   ACM Transactions on Graphics (Proc. SIGGRAPH), 2017.
   
-and 
-
-  Tobias Günther, Holger Theisel
-  Hyper-Objective Vortices
-  IEEE Transactions on Visualization and Computer Graphics, 2018.
 
 ============================================
-VTK class vtkHyperObjectivityFilter
+VTK class vtkReferenceFrameFilter
 ============================================
-The class vtkHyperObjectivityFilter implements a vtkImageAlgorithm that transforms a given unsteady 2D vector field into an optimal reference frame. The user may set the neighborhood region for the local fitting of the reference transformation, and may choose among three supported classes of reference frame invariance, namely objectivity, similarity invariance and affine invariance.
+The class vtkReferenceFrameFilter implements an vtkImageAlgorithm that transforms a given unsteady 2D vector field into an optimal reference frame. The user may set the neighborhood region for the local fitting of the reference transformation, and may choose among four supported classes of reference frame invariance, namely objectivity, similarity invariance, affine invariance and the displacement optimization.
 
 ============================================
-Example program HyperObjectivityFilter.cxx
+Example program ReferenceFrameFilter.cxx
 ============================================
-The file HyperObjectivityFilter.cxx contains a command line program that demonstrates the vtkHyperObjectivityFilter. The command line tool transforms a vector field that is given in the VTKImageData XML format (*.vti), and writes the result into a vti-file. Note that the vector field must be given in 2D space-time, i.e., the third dimension is time. 
+The file ReferenceFrameFilter.cxx contains a command line program that demonstrates the vtkReferenceFrameFilter. The command line tool transforms a vector field that is given in the VTKImageData XML format (*.vti), and writes the result into a vti-file. Note that the vector field must be given in 2D space-time, i.e., the third dimension is time. The following tuples are expected "v", "vx", "vy", "vt", containing the flow and the first-order derivatives.
 The command line arguments are:
   1. the path to the vector field in *.vti XML format
   2. the neighborhood size
-  3. the selected type of reference frame invariance (0=objectivity, 1=similarity invariance, 2=affine invariance)
-Example: "mypath.vti" 10 0
+  3. the selected type of reference frame invariance (0=objectivity, 1=similarity invariance, 2=affine invariance, 3=displacement optimization)
+  4. the Taylor approximation order (only read when displacement optimization is chosen)
 If no vector field is passed as argument, the command line tool uses a simple Stuart vortex vector field.
 
 ============================================
 Requirements
 ============================================
 Dependencies:
-- C++ 11                 (tested with Visual Studio 2015)
-- CMake                  (tested with CMake 3.6.2)
-- VTK                    (tested with VTK 7.1.0)
-- Eigen                  (tested with Eigen 3.3)
+- C++ 11                 (tested with Visual Studio 2017)
+- CMake                  (tested with CMake 3.12.3)
+- VTK                    (tested with VTK 8.1.0)
+- Eigen                  (tested with Eigen 3.3.7)
 
 Tested on:
 - Windows 10

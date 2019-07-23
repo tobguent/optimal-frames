@@ -1,21 +1,20 @@
 #include <vtkSmartPointer.h>
 #include <vtkMath.h>
+#include <vtkFloatArray.h>
 #include <vtkImageData.h>
 #include <vtkPointData.h>
-#include <vtkVector.h>
 #include <vtkXMLImageDataReader.h>
 #include <vtkXMLImageDataWriter.h>
-#include <vtkImageReader.h>
-#include <vtkFloatArray.h>
-#include "vtkHyperObjectivityFilter.h"
+#include "vtkReferenceFrameFilter.h"
 
 // Reads a vector field from file or uses a Stuart vortex by default.
-vtkSmartPointer<vtkImageData> InitializeTestCase(int argc, char *argv[], int* neighborhoodU, vtkHyperObjectivityFilter::EInvariance* invariance);
+vtkSmartPointer<vtkImageData> InitializeTestCase(int argc, char *argv[], int* neighborhoodU, vtkReferenceFrameFilter::EInvariance* invariance, int* taylorOrder);
 
 // Input arguments:
-//   [1] : path to the vti-file in XML format, containing the unsteady vector field and all its first-order derivatives as floats in 2D space-time (the third dimension is time, the vectors stored the xy-components only)
+//   [1] : path to the vti-file in XML format, containing the unsteady vector field in 2D space-time (third dimension is time)
 //   [2] : neighborhood size (int)
-//   [3] : invariance choice (0=objectivity, 1=similarity invariance, 2=affine invariance)
+//   [3] : invariance choice (0=objectivity, 1=similarity invariance, 2=affine invariance, 3=displacement optimization)
+//   [4] : Taylor approximation order (only read when displacement optimization is selected)
 int main(int argc, char *argv[])
 {
 	// ---------------------------------------------
@@ -23,30 +22,34 @@ int main(int argc, char *argv[])
 	// ---------------------------------------------
 	cout << "Initialize test case..." << endl;
 
-	int neighborhoodU;
-	vtkHyperObjectivityFilter::EInvariance invariance;
-	vtkSmartPointer<vtkImageData> input = InitializeTestCase(argc, argv, &neighborhoodU, &invariance);
+	int neighborhoodU, taylorOrder;
+	vtkReferenceFrameFilter::EInvariance invariance;
+	vtkSmartPointer<vtkImageData> input = InitializeTestCase(argc, argv, &neighborhoodU, &invariance, &taylorOrder);
 
 	// ---------------------------------------------
 	// --- Compute vector field in optimal frame ---
 	// ---------------------------------------------
 	cout << "Computing optimal reference frame..." << endl;
 
-	vtkSmartPointer<vtkHyperObjectivityFilter> filter = vtkSmartPointer<vtkHyperObjectivityFilter>::New();
+	vtkSmartPointer<vtkReferenceFrameFilter> filter =
+		vtkSmartPointer<vtkReferenceFrameFilter>::New();
 	filter->SetInputData(input);
 	filter->SetNeighborhoodU(neighborhoodU);	// size of neighborhood region U in voxels
 	filter->SetInvariance(invariance);			// select the desired invariance
+	filter->SetTaylorOrder(taylorOrder);		// set the taylor approximation order
 	filter->SetFieldNameV("v");					// name of the point data field that contains velocities
 	filter->SetFieldNameVx("vx");				// name of the point data field that contains x-partials of the velocity
 	filter->SetFieldNameVy("vy");				// name of the point data field that contains y-partials of the velocity
 	filter->SetFieldNameVt("vt");				// name of the point data field that contains t-partials of the velocity
+	filter->SetUseSummedAreaTables(true);		// use summed area tables
 	filter->Update();
 	vtkImageData* output = filter->GetOutput();
 
 	// ---------------------------------------------
 	// ----------- Write result to file ------------
 	// ---------------------------------------------
-	vtkSmartPointer<vtkXMLImageDataWriter> writer = vtkSmartPointer<vtkXMLImageDataWriter>::New();
+	vtkSmartPointer<vtkXMLImageDataWriter> writer =
+		vtkSmartPointer<vtkXMLImageDataWriter>::New();
 	writer->SetFileName("v_optimal.vti");
 	writer->SetInputData(output);
 	writer->Update();
@@ -96,7 +99,7 @@ vtkSmartPointer<vtkImageData> CreateStuartVectorField()
 			for (int ix = 0; ix < dims[0]; ix++)
 			{
 				double x = boundsMin[0] + ix * spacing[0];
-				int tupleIdx = it*dims[0] * dims[1] + iy*dims[0] + ix;
+				int tupleIdx = it * dims[0] * dims[1] + iy * dims[0] + ix;
 				array_v->SetTuple2(tupleIdx, sinh(y) / (cosh(y) - 0.25*cos(x - t)) + 1, -(0.25*sin(x - t)) / (cosh(y) - 0.25*cos(x - t)));
 				array_vx->SetTuple2(tupleIdx, -(0.25*sin(x - t)*sinh(y)) / ((cosh(y) - 0.25*cos(x - t))*(cosh(y) - 0.25*cos(x - t))), (0.0625*(sin(x - t)*sin(x - t))) / ((cosh(y) - 0.25*cos(x - t))*(cosh(y) - 0.25*cos(x - t))) - (0.25*cos(x - t)) / (cosh(y) - 0.25*cos(x - t)));
 				array_vy->SetTuple2(tupleIdx, cosh(y) / (cosh(y) - 0.25*cos(x - t)) - (sinh(y)*sinh(y)) / ((cosh(y) - 0.25*cos(x - t))*(cosh(y) - 0.25*cos(x - t))), (0.25*sin(x - t)*sinh(y)) / ((cosh(y) - 0.25*cos(x - t))*(cosh(y) - 0.25*cos(x - t))));
@@ -118,18 +121,20 @@ vtkSmartPointer<vtkImageData> CreateStuartVectorField()
 }
 
 // Reads a vector field from file or uses a Stuart vortex by default.
-vtkSmartPointer<vtkImageData> InitializeTestCase(int argc, char *argv[], int* neighborhoodU, vtkHyperObjectivityFilter::EInvariance* invariance)
+vtkSmartPointer<vtkImageData> InitializeTestCase(int argc, char *argv[], int* neighborhoodU, vtkReferenceFrameFilter::EInvariance* invariance, int* taylorOrder)
 {
 	// set the default parameters
-	*neighborhoodU = 10;										// size of neighborhood region in voxels: [2*N+1]^2
-	*invariance = vtkHyperObjectivityFilter::AffineInvariance;	// selected invariance
+	*neighborhoodU = 20;										// size of neighborhood region in voxels: [2*N+1]^2
+	*invariance = vtkReferenceFrameFilter::Displacement;		// selected invariance
+	*taylorOrder = 2;											// Taylor approximation order when using the displacement-based optimization
 
 	// read command line arguments to create the input vector field
 	vtkSmartPointer<vtkImageData> input;
-	if (argc == 4) 
+	if (argc >= 4) 
 	{
 		// create a reader and try to read the file
-		vtkSmartPointer<vtkXMLImageDataReader> reader = vtkSmartPointer<vtkXMLImageDataReader>::New();
+		vtkSmartPointer<vtkXMLImageDataReader> reader =
+			vtkSmartPointer<vtkXMLImageDataReader>::New();
 		reader->SetFileName(argv[1]);
 		reader->Update();
 		input = reader->GetOutput();
@@ -140,10 +145,13 @@ vtkSmartPointer<vtkImageData> InitializeTestCase(int argc, char *argv[], int* ne
 			// read additional parameters: neighborhood size and invariance
 			*neighborhoodU = atoi(argv[2]);
 			switch (atoi(argv[3])) {
-			case 0: *invariance = vtkHyperObjectivityFilter::Objectivity; break;
-			case 1: *invariance = vtkHyperObjectivityFilter::SimilarityInvariance; break;
-			case 2: *invariance = vtkHyperObjectivityFilter::AffineInvariance; break;
+			case 0: *invariance = vtkReferenceFrameFilter::Objectivity; break;
+			case 1: *invariance = vtkReferenceFrameFilter::SimilarityInvariance; break;
+			case 2: *invariance = vtkReferenceFrameFilter::AffineInvariance; break;
+			case 3: *invariance = vtkReferenceFrameFilter::Displacement; break;
 			}
+			if (argc >= 5)
+				*taylorOrder = atoi(argv[4]);
 		}
 		else // if unsuccessful, for instance when file was not found, build a stuart vortex instead.
 		{
@@ -151,15 +159,17 @@ vtkSmartPointer<vtkImageData> InitializeTestCase(int argc, char *argv[], int* ne
 			cout << "  Using Stuart vortex instead with default parameters." << endl;
 			input = CreateStuartVectorField();
 			cout << "  Data set \t = Stuart Vortex" << endl;
-		}	
+		}
 	}
-	else 
+	else
 	{
 		// if no command line arguments were specified, use a simple Stuart vortex vector field
-		input = CreateStuartVectorField();	
+		input = CreateStuartVectorField();
 		cout << "  Data set \t = Stuart Vortex" << endl;
 	}
 	cout << "  Neighborhood U = " << *neighborhoodU << endl;
-	cout << "  Invariance \t = " << (*invariance == 0 ? "Objectivity" : (*invariance == 1 ? "Similarity Invariance" : "Affine Invariance")) << endl;
+	cout << "  Invariance \t = " << (*invariance == 0 ? "Objectivity" : (*invariance == 1 ? "Similarity Invariance" : (*invariance == 2 ? "Affine Invariance" : "Displacement"))) << endl;
+	if (*invariance == vtkReferenceFrameFilter::Displacement)
+		cout << "  Taylor Order m = " << *taylorOrder << endl;
 	return input;
 }

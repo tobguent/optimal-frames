@@ -1,4 +1,4 @@
-#include "vtkHyperObjectivityFilter.h"
+#include "vtkReferenceFrameFilter.h"
 #include <vtkImageData.h>
 #include <vtkObjectFactory.h>
 #include <vtkStreamingDemandDrivenPipeline.h>
@@ -14,8 +14,8 @@
 #include <Eigen\QR>
 #include <vector>
 #include <vtkFloatArray.h>
- 
-vtkStandardNewMacro(vtkHyperObjectivityFilter);
+
+vtkStandardNewMacro(vtkReferenceFrameFilter);
 
 // Creates a 2x2 matrix from 2 column vectors
 static Eigen::Matrix2d make_Matrix2d(const Eigen::Vector2d& c0, const Eigen::Vector2d& c1)
@@ -33,8 +33,49 @@ static Eigen::Matrix2d make_Matrix2d(const double& m00, const double& m01, const
 	return M;
 }
 
+// Returns value of Binomial Coefficient C(n, k) 
+static int binomialCoeff(int n, int k)
+{
+	int res = 1;
+	if (k > n - k)
+		k = n - k;
+	for (int i = 0; i < k; ++i) {
+		res *= (n - i);
+		res /= (i + 1);
+	}
+	return res;
+}
 
-vtkHyperObjectivityFilter::vtkHyperObjectivityFilter() : NeighborhoodU(10), Invariance(AffineInvariance), UseSummedAreaTables(true),
+static int factorial(int n)
+{
+	int ret = 1;
+	for (int i = 1; i <= n; ++i)
+		ret *= i;
+	return ret;
+}
+
+static void ComputeDisplacementSystemMatrixCoefficients(int i, int j, const Eigen::Vector2d& xx, const Eigen::Vector2d& vv, const Eigen::Matrix2d& J, Eigen::Matrix2d& f, Eigen::Matrix2d& g)
+{
+	f = make_Matrix2d(0, 0, 0, 0), g = make_Matrix2d(0, 0, 0, 0);
+	Eigen::Matrix2d I = make_Matrix2d(1, 0, 0, 1);
+	double x = xx.x(), y = xx.y(), u = vv.x(), v = vv.y();
+
+	double x_i = pow(x, i), x_i1 = pow(x, i - 1);
+	double y_j = pow(y, j), y_j1 = pow(y, j - 1);
+
+	int fac_i = factorial(i), fac_i1 = factorial(i - 1);
+	int fac_j = factorial(j), fac_j1 = factorial(j - 1);
+
+	f -= x_i * y_j / (fac_i * fac_j) * J;
+	if (i != 0)
+		f += u * x_i1*y_j / (fac_i1 * fac_j) * I;
+	if (j != 0)
+		f += v * x_i*y_j1 / (fac_i * fac_j1) * I;
+
+	g = x_i * y_j / (fac_i * fac_j) * I;
+}
+
+vtkReferenceFrameFilter::vtkReferenceFrameFilter() : NeighborhoodU(10), Invariance(AffineInvariance), UseSummedAreaTables(true), TaylorOrder(2),
 FieldNameV(NULL), FieldNameVx(NULL), FieldNameVy(NULL), FieldNameVt(NULL)
 {
 	SetFieldNameV("v");
@@ -43,12 +84,12 @@ FieldNameV(NULL), FieldNameVx(NULL), FieldNameVy(NULL), FieldNameVt(NULL)
 	SetFieldNameVt("vt");
 }
 
-int vtkHyperObjectivityFilter::RequestData(vtkInformation *vtkNotUsed(request),
+int vtkReferenceFrameFilter::RequestData(vtkInformation *vtkNotUsed(request),
 	vtkInformationVector **inputVector,
 	vtkInformationVector *outputVector)
 {
 	using namespace Eigen;
-	
+
 	// Get the info objects
 	vtkInformation *inInfo = inputVector[0]->GetInformationObject(0);
 	vtkInformation *outInfo = outputVector->GetInformationObject(0);
@@ -69,6 +110,7 @@ int vtkHyperObjectivityFilter::RequestData(vtkInformation *vtkNotUsed(request),
 	case Objectivity:			systemSize = 6;		break;
 	case SimilarityInvariance:	systemSize = 8;		break;
 	case AffineInvariance:		systemSize = 12;	break;
+	case Displacement:			systemSize = 2 * TaylorOrder*TaylorOrder + TaylorOrder * 6 + 4; break;
 	}
 
 	// read the input data and abort if data is not present!
@@ -116,7 +158,7 @@ int vtkHyperObjectivityFilter::RequestData(vtkInformation *vtkNotUsed(request),
 			for (int ix = 0; ix < dims[0]; ix++)
 			{
 				double x = boundsMin[0] + ix * spacing[0];
-				int tupleIdx = it * dims[0] * dims[1] + iy*dims[0] + ix;
+				int tupleIdx = it * dims[0] * dims[1] + iy * dims[0] + ix;
 
 				// position, velocity and derivatives at the voxel
 				Vector2d xx(x, y);
@@ -124,13 +166,13 @@ int vtkHyperObjectivityFilter::RequestData(vtkInformation *vtkNotUsed(request),
 				Vector2d dx(input_vx[tupleIdx * 2 + 0], input_vx[tupleIdx * 2 + 1]);
 				Vector2d dy(input_vy[tupleIdx * 2 + 0], input_vy[tupleIdx * 2 + 1]);
 				Vector2d dt(input_vt[tupleIdx * 2 + 0], input_vt[tupleIdx * 2 + 1]);
-				
+
 				// compute 90 degree rotated vectors, setup Jacobian and compute products
 				Vector2d Xp(-xx.y(), xx.x());
 				Vector2d Vp(-vv.y(), vv.x());
 				Matrix2d J = make_Matrix2d(dx, dy);
-				Vector2d Jxpvp = -J*Xp + Vp;
-				Vector2d Jxv = -J*xx + vv;
+				Vector2d Jxpvp = -J * Xp + Vp;
+				Vector2d Jxv = -J * xx + vv;
 
 				// setup matrix M
 				MatrixXd M(2, systemSize);
@@ -149,13 +191,33 @@ int vtkHyperObjectivityFilter::RequestData(vtkInformation *vtkNotUsed(request),
 					M(0, 0) = vv.x() - xx.x() * J(0, 0);	M(0, 1) = 0 - xx.x() * J(0, 1);	/**/  M(0, 2) = vv.y() - xx.y() * J(0, 0);  M(0, 3) = 0 - xx.y() * J(0, 1);  /**/  M(0, 4) = J(0, 0);  M(0, 5) = J(0, 1);  /**/  M(0, 6) = 1;  M(0, 7) = 0;  /**/  M(0, 8) = xx.x();  M(0, 9) = 0;       /**/  M(0, 10) = xx.y();  M(0, 11) = 0;
 					M(1, 0) = 0 - xx.x() * J(1, 0);	M(1, 1) = vv.x() - xx.x() * J(1, 1);	/**/  M(1, 2) = 0 - xx.y() * J(1, 0);  M(1, 3) = vv.y() - xx.y() * J(1, 1);  /**/  M(1, 4) = J(1, 0);  M(1, 5) = J(1, 1);  /**/  M(1, 6) = 0;	M(1, 7) = 1; /**/  M(1, 8) = 0;       M(1, 9) = xx.x();  /**/  M(1, 10) = 0;       M(1, 11) = xx.y();
 					break;
+				case Displacement:
+				{
+					int index = 0;
+					for (int m = 0; m <= TaylorOrder; ++m)
+					{
+						for (int i = m; i >= 0; --i)
+						{
+							int j = m - i;
+							Matrix2d f, g;
+							ComputeDisplacementSystemMatrixCoefficients(i, j, xx, vv, J, f, g);
+							M(0, index * 4 + 0) = f(0, 0);		M(1, index * 4 + 0) = f(1, 0);
+							M(0, index * 4 + 1) = f(0, 1);		M(1, index * 4 + 1) = f(1, 1);
+
+							M(0, index * 4 + 2) = g(0, 0);		M(1, index * 4 + 2) = g(1, 0);
+							M(0, index * 4 + 3) = g(0, 1);		M(1, index * 4 + 3) = g(1, 1);
+							index += 1;
+						}
+					}
+					break;
+				}
 				}
 
 				// store MTM and MTb
 				MatrixXd MT = M.transpose();
 				_M[iy*dims[0] + ix] = M;
-				_MTM[iy*dims[0] + ix] = MT*M;
-				_MTb[iy*dims[0] + ix] = MT*dt;
+				_MTM[iy*dims[0] + ix] = MT * M;
+				_MTb[iy*dims[0] + ix] = MT * dt * ((Invariance == Displacement) ? -1 : 1);
 			}
 		}
 
@@ -179,7 +241,7 @@ int vtkHyperObjectivityFilter::RequestData(vtkInformation *vtkNotUsed(request),
 					}
 				}
 		}
-		
+
 		// solve the system for each pixel
 		for (int iy = 0; iy < dims[1]; iy++)
 		{
@@ -187,7 +249,7 @@ int vtkHyperObjectivityFilter::RequestData(vtkInformation *vtkNotUsed(request),
 			for (int ix = 0; ix < dims[0]; ix++)
 			{
 				double x = boundsMin[0] + ix * spacing[0];
-				int tupleIdx = it * dims[0] * dims[1] + iy*dims[0] + ix;
+				int tupleIdx = it * dims[0] * dims[1] + iy * dims[0] + ix;
 
 				// corner indices of the neighborhood region
 				int x1 = std::min(std::max(0, ix - NeighborhoodU - 1), dims[0] - 1);
@@ -215,10 +277,10 @@ int vtkHyperObjectivityFilter::RequestData(vtkInformation *vtkNotUsed(request),
 							MTb += _MTb[wy*dims[0] + wx];
 						}
 				}
-				
+
 				// solve for reference frame parameters
 				VectorXd uu = MTM.fullPivHouseholderQr().solve(MTb);
-				
+
 				// compute new vector field in optimal frame
 				Vector2d xx(x, y);
 				Vector2d vv(input_v[tupleIdx * 2 + 0], input_v[tupleIdx * 2 + 1]);
@@ -240,18 +302,78 @@ int vtkHyperObjectivityFilter::RequestData(vtkInformation *vtkNotUsed(request),
 					Jnew = J + make_Matrix2d(0, uu(0), -uu(0), 0) - make_Matrix2d(uu(6), 0, 0, uu(6));
 					break;
 				case AffineInvariance:
+				{
 					Matrix2d H1 = make_Matrix2d(-uu(0), -uu(2), -uu(1), -uu(3));
 					Vector2d k1(uu(4), uu(5));
 					vnew = vv + H1 * xx + k1;
 					Jnew = J + H1;
 					break;
 				}
-				Vector2d vtnew = dt - _M[iy * dims[0] + ix] * uu;
+				case Displacement:
+				{
+					// construct velocity
+					{
+						Vector2d Ft(0, 0);
+						int fac_m = 1;
+						for (int m = 0; m <= TaylorOrder; ++m)
+						{
+							if (m > 1)
+								fac_m *= m;
+
+							Vector2d Ftpart(0, 0);
+							for (int i = 0; i <= m; ++i)
+							{
+								int fu_i = i, fu_j = m - i;
+								// general formular to get the linear index:  (i+j)*(i+j+1) + 2*j
+								int linear_fu = (fu_i + fu_j)*(fu_i + fu_j + 1) + 2 * fu_j;
+								double fu = uu(2 * linear_fu + 0);
+								double fv = uu(2 * linear_fu + 1);
+
+								int binom = binomialCoeff(m, i);
+								Ftpart += binom * pow(xx.x(), i) * pow(xx.y(), m - i) * Vector2d(fu, fv);
+							}
+							Ft += Ftpart / fac_m;
+						}
+						vnew = vv + Ft;
+					}
+					// construct Jacobian
+					{
+						Matrix2d nablaFt = make_Matrix2d(0, 0, 0, 0);
+						int fac_m = 1;
+						for (int m = 1; m <= TaylorOrder; ++m)
+						{
+							Matrix2d nablaFtpart = make_Matrix2d(0, 0, 0, 0);
+							for (int i = 0; i <= m - 1; ++i)
+							{
+								int fx_i = i + 1, fx_j = m - 1 - i;
+								int fy_i = i, fy_j = m - i;
+								// general formular to get the linear index:  (i+j)*(i+j+1) + 2*j
+								int linear_fx = (fx_i + fx_j)*(fx_i + fx_j + 1) + 2 * fx_j;
+								int linear_fy = (fy_i + fy_j)*(fy_i + fy_j + 1) + 2 * fy_j;
+								double fxu = uu(2 * linear_fx + 0);
+								double fxv = uu(2 * linear_fx + 1);
+								double fyu = uu(2 * linear_fy + 0);
+								double fyv = uu(2 * linear_fy + 1);
+
+								int binom = binomialCoeff(m - 1, i);
+								nablaFtpart += binom * pow(xx.x(), i) * pow(xx.y(), m - 1 - i) * make_Matrix2d(fxu, fyu, fxv, fyv);
+							}
+							nablaFt += nablaFtpart / fac_m;
+
+							if (m > 1)
+								fac_m *= m;
+						}
+						Jnew = J + nablaFt;
+					}
+					break;
+				}
+				}
+				Vector2d vtnew = dt - _M[iy * dims[0] + ix] * uu * ((Invariance == Displacement) ? -1 : 1);
 
 				// store the result
 				output_v->SetTuple2(tupleIdx, vnew.x(), vnew.y());
-				output_vx->SetTuple2(tupleIdx, Jnew(0,0), Jnew(1,0));
-				output_vy->SetTuple2(tupleIdx, Jnew(0,1), Jnew(1,1));
+				output_vx->SetTuple2(tupleIdx, Jnew(0, 0), Jnew(1, 0));
+				output_vy->SetTuple2(tupleIdx, Jnew(0, 1), Jnew(1, 1));
 				output_vt->SetTuple2(tupleIdx, vtnew.x(), vtnew.y());
 			}
 		}
