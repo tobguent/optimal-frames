@@ -180,12 +180,12 @@ int vtkReferenceFrameFilter::RequestData(vtkInformation *vtkNotUsed(request),
 				{
 				default:
 				case Objectivity:
-					M(0, 0) = Jxpvp.x(); 	 M(0, 1) = dx.x(); M(0, 2) = dy.x();   M(0, 3) = 1; M(0, 4) = 0;   M(0, 5) = Xp.x();
-					M(1, 0) = Jxpvp.y(); 	 M(1, 1) = dx.y(); M(1, 2) = dy.y();   M(1, 3) = 0; M(1, 4) = 1;   M(1, 5) = Xp.y();
+					M(0, 0) = Jxpvp.x(); 	 M(0, 1) = dx.x(); M(0, 2) = dy.x();   M(0, 3) = Xp.x(); M(0, 4) = 1;   M(0, 5) = 0;
+					M(1, 0) = Jxpvp.y(); 	 M(1, 1) = dx.y(); M(1, 2) = dy.y();   M(1, 3) = Xp.y(); M(1, 4) = 0;   M(1, 5) = 1;
 					break;
 				case SimilarityInvariance:
-					M(0, 0) = Jxpvp.x(); 	 M(0, 1) = dx.x(); M(0, 2) = dy.x();   M(0, 3) = 1; M(0, 4) = 0;   M(0, 5) = Xp.x(); M(0, 6) = Jxv.x(); M(0, 7) = xx.x();
-					M(1, 0) = Jxpvp.y(); 	 M(1, 1) = dx.y(); M(1, 2) = dy.y();   M(1, 3) = 0; M(1, 4) = 1;   M(1, 5) = Xp.y(); M(1, 6) = Jxv.y();	M(1, 7) = xx.y();
+					M(0, 0) = Jxpvp.x(); 	 M(0, 1) = dx.x(); M(0, 2) = dy.x();   M(0, 3) = Xp.x(); M(0, 4) = 1;   M(0, 5) = 0; M(0, 6) = Jxv.x(); M(0, 7) = xx.x();
+					M(1, 0) = Jxpvp.y(); 	 M(1, 1) = dx.y(); M(1, 2) = dy.y();   M(1, 3) = Xp.y(); M(1, 4) = 0;   M(1, 5) = 1; M(1, 6) = Jxv.y();	M(1, 7) = xx.y();
 					break;
 				case AffineInvariance:
 					M(0, 0) = vv.x() - xx.x() * J(0, 0);	M(0, 1) = 0 - xx.x() * J(0, 1);	/**/  M(0, 2) = vv.y() - xx.y() * J(0, 0);  M(0, 3) = 0 - xx.y() * J(0, 1);  /**/  M(0, 4) = J(0, 0);  M(0, 5) = J(0, 1);  /**/  M(0, 6) = 1;  M(0, 7) = 0;  /**/  M(0, 8) = xx.x();  M(0, 9) = 0;       /**/  M(0, 10) = xx.y();  M(0, 11) = 0;

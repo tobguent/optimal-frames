@@ -1,14 +1,15 @@
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.21)
  
 PROJECT(ReferenceFrameFilter)
 
 FIND_PACKAGE(VTK REQUIRED)
-include(${VTK_USE_FILE})
+
+SET (CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_SOURCE_DIR}/cmake)
 
 FIND_PACKAGE(Eigen3 REQUIRED)
 include_directories(${EIGEN3_INCLUDE_DIR})
 
-add_executable(ReferenceFrameFilter MACOSX_BUNDLE ReferenceFrameFilter vtkReferenceFrameFilter.cxx vtkReferenceFrameFilter.h)
+add_executable(ReferenceFrameFilter MACOSX_BUNDLE ReferenceFrameFilter.cxx vtkReferenceFrameFilter.cxx vtkReferenceFrameFilter.h)
  
 FIND_PACKAGE(OpenMP)
 IF(OPENMP_FOUND)

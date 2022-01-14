@@ -38,9 +38,9 @@ If no vector field is passed as argument, the command line tool uses a simple St
 Requirements
 ============================================
 Dependencies:
-- C++ 11                 (tested with Visual Studio 2017)
-- CMake                  (tested with CMake 3.12.3)
-- VTK                    (tested with VTK 8.1.0)
+- C++ 11                 (tested with Visual Studio 2019)
+- CMake                  (tested with CMake 3.21.1)
+- VTK                    (tested with VTK 9.0.1)
 - Eigen                  (tested with Eigen 3.3.7)
 
 Tested on:
