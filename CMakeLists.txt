@@ -1,16 +1,24 @@
-cmake_minimum_required(VERSION 3.21)
+cmake_minimum_required(VERSION 3.17)
  
 PROJECT(ReferenceFrameFilter)
 
-FIND_PACKAGE(VTK REQUIRED)
+# ----- VTK -----
+find_package(VTK REQUIRED)
+include_directories(SYSTEM ${VTK_INCLUDE_DIRS})
 
-SET (CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_SOURCE_DIR}/cmake)
+# ----- Eigen -----
+include(FetchContent)
+FetchContent_Declare(eigen3
+        GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
+        GIT_TAG 9441d94dccccd5db8d64179516fdc5b53994a047
+        )
+FetchContent_Populate(eigen3)
+add_library(eigen INTERFACE)
+add_library (eigen3::eigen ALIAS eigen)
+target_include_directories(eigen INTERFACE ${eigen3_SOURCE_DIR})
 
-FIND_PACKAGE(Eigen3 REQUIRED)
-include_directories(${EIGEN3_INCLUDE_DIR})
+add_executable(ReferenceFrameFilter MACOSX_BUNDLE ReferenceFrameFilter vtkReferenceFrameFilter.cxx vtkReferenceFrameFilter.h)
 
-add_executable(ReferenceFrameFilter MACOSX_BUNDLE ReferenceFrameFilter.cxx vtkReferenceFrameFilter.cxx vtkReferenceFrameFilter.h)
- 
 FIND_PACKAGE(OpenMP)
 IF(OPENMP_FOUND)
   MESSAGE(STATUS "Using OpenMP parallelization")
@@ -21,8 +29,5 @@ ELSE()
   MESSAGE(STATUS "Not using OpenMP parallelization")
 ENDIF()
 
-if(VTK_LIBRARIES)
-  target_link_libraries(ReferenceFrameFilter ${VTK_LIBRARIES})
-else()
-  target_link_libraries(ReferenceFrameFilter vtkHybrid vtkWidgets)
-endif()
+target_link_libraries(ReferenceFrameFilter ${VTK_LIBRARIES} eigen)
+vtk_module_autoinit(TARGETS ReferenceFrameFilter MODULES ${VTK_LIBRARIES})
